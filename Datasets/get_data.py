@@ -7,7 +7,7 @@ from huggingface_hub import snapshot_download
 local_path = snapshot_download(
     repo_id="nvidia/PhysicalAI-Spatial-Intelligence-Warehouse",
     repo_type="dataset",
-    local_dir="./warehouse_data",
+    local_dir="./Datasets/warehouse_data",
     token=os.environ.get("HUGGINGFACE_API_KEY")
 )
 
