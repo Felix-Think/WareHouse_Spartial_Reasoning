@@ -1,0 +1,27 @@
+
+# config_unet.yaml
+
+data:
+  # Đường dẫn dữ liệu train
+  train_images: "Datasets/test/images"   # ví dụ: "Datasets/train/images"
+  train_labels: "Datasets/labels"   # ví dụ: "Datasets/train/labels"
+
+  # Đường dẫn dữ liệu validation
+  val_images: "Datasets/test/images"     # ví dụ: "Datasets/val/images"
+  val_labels: "Dataset/labels"     # ví dụ: "Datasets/val/labels"
+
+  # Kích thước ảnh đầu vào (H, W)
+  img_size: [512, 512]
+
+model:
+  in_channels: 3     # ảnh RGB
+  num_classes: 4     # số lớp segmentation (mask có 4 channel)
+
+training:
+  batch_size: 4
+  epochs: 50
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  num_workers: 4
+  save_path: "models/ResUnet/checkpoints"      # ví dụ: "checkpoints/"
+  save_every: 5      # lưu checkpoint mỗi N epoch
