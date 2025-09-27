@@ -851,6 +851,32 @@ def compute_total_loss(rpn_cls_logits, rpn_bbox_preds, anchors,
 
 import torch
 import torch.nn as nn
+def generate_anchors_all_feature_maps(feature_shapes,
+                                      strides=[4, 8, 16, 32, 64],
+                                      ratios=[0.5, 1.0, 2.0],
+                                      scales=[1.0, 2.0, 4.0],
+                                      device="cuda"):
+    """
+    Sinh anchors cho toàn bộ feature maps giống như Faster/Mask R-CNN.
+    Trả về Tensor [N, 4] anchors (x1,y1,x2,y2) ở tọa độ ảnh gốc.
+    """
+    all_anchors = []
+    for lvl, (H, W) in enumerate(feature_shapes):
+        stride = strides[lvl]
+        # 1. Base anchors cho level này
+        base_anchors = generate_anchors(stride, ratios, scales, device)  # [A, 4]
+        A = base_anchors.shape[0]
+
+        # 2. Dịch anchors theo grid
+        shifts_x = torch.arange(0, W * stride, step=stride, device=device)
+        shifts_y = torch.arange(0, H * stride, step=stride, device=device)
+        shift_y, shift_x = torch.meshgrid(shifts_y, shifts_x, indexing="ij")
+        shift = torch.stack((shift_x, shift_y, shift_x, shift_y), dim=-1).reshape(-1, 4)
+
+        anchors = (base_anchors[None, :, :] + shift[:, None, :]).reshape(-1, 4)
+        all_anchors.append(anchors)
+
+    return torch.cat(all_anchors, dim=0)
 
 class MaskRCNN(nn.Module):
     def __init__(self, num_classes=5, use_amodal=True, device=device):
@@ -862,61 +888,55 @@ class MaskRCNN(nn.Module):
         # ---- 1. Backbone & FPN ----
         self.backbone = ResNetBackbone(pretrained=True)
         self.fpn = FPN()
-
-        # ---- 2. RPN ----
         self.rpn = RPN(in_channels=256, num_anchors=9)
-
-        # ---- 3. Detection Head ----
         self.det_head = DetectionHead(in_channels=256, num_classes=num_classes)
-
-        # ---- 4. Dual Mask Head ----
         self.mask_head = DualMaskHead(in_channels=256, num_classes=num_classes)
 
-    def forward(self, images, anchors=None, targets=None):
-        """
-        images: Tensor [B, C, H, W]
-        anchors: anchors đã được sinh (tuỳ bạn truyền vào từ ngoài)
-        targets: list[dict] (chỉ dùng khi training)
-        """
+    def forward(self, images, targets=None):
         B, _, H, W = images.shape
         device = images.device
 
         # ---- 1. Feature Extract ----
         c2, c3, c4, c5 = self.backbone(images)
-        fpn_features = self.fpn([c2, c3, c4, c5])  # [P2, P3, P4, P5, P6]
+        fpn_features = self.fpn([c2, c3, c4, c5])  # P2..P6
+        feature_shapes = [(f.shape[2], f.shape[3]) for f in fpn_features]
 
-        # ---- 2. RPN ----
+        # ---- 2. Generate Anchors (GLOBAL) ----
+        anchors = generate_anchors_all_feature_maps(feature_shapes, device=device)
+
+        # ---- 3. RPN ----
         rpn_cls_logits, rpn_bbox_preds = self.rpn(fpn_features)
 
-        # ---- 3. Proposal Generation ----
-        feature_shapes = [(f.shape[2], f.shape[3]) for f in fpn_features]
+        # ---- 4. Proposal Generation (dùng anchors để decode) ----
         proposals, _ = generate_proposals(
-            rpn_cls_logits, rpn_bbox_preds, feature_shapes, image_size=(H, W),
-            device=device
-        )  # [N, 5]
+            rpn_cls_logits, rpn_bbox_preds, feature_shapes,
+            image_size=(H, W), device=device
+        )
 
-        # ---- 4. Detection Head ----
+        # ---- 5. Detection Head ----
         cls_logits, bbox_deltas = self.det_head(fpn_features[:-1], proposals, image_shape=(H, W))
 
-        # ---- 5. Dual Mask Head ----
+        # ---- 6. Dual Mask Head ----
         visible_logits, amodal_logits = self.mask_head(fpn_features[:-1], proposals)
 
         if self.training:
             assert targets is not None, "Targets must be provided in training mode"
+
             # Gộp GT cho toàn batch
             gt_boxes = torch.cat([t["boxes"].to(device) for t in targets], dim=0)
             gt_labels = torch.cat([t["labels"].to(device) for t in targets], dim=0)
 
+            # ---- 7. Loss ----
             losses = compute_total_loss(
                 rpn_cls_logits.view(-1, 2),
                 rpn_bbox_preds.view(-1, 4),
-                anchors=anchors if anchors is not None else torch.empty(0, 4, device=device),
+                anchors=anchors,             # <<< TRUYỀN ANCHORS CHUẨN PAPER
                 rpn_feature_shapes=feature_shapes,
                 gt_boxes=gt_boxes,
                 gt_labels=gt_labels,
                 roi_cls_logits=cls_logits,
                 roi_bbox_deltas=bbox_deltas,
-                proposals=proposals[:, 1:5],  # bỏ batch_idx
+                proposals=proposals[:, 1:5],
                 mask_visible_logits=visible_logits,
                 mask_amodal_logits=amodal_logits,
                 targets=targets,
@@ -932,6 +952,7 @@ class MaskRCNN(nn.Module):
                 "visible_mask_logits": visible_logits,
                 "amodal_mask_logits": amodal_logits if self.use_amodal else None
             }
+
 
 
 def train_mask_rcnn(model, dataloader, num_epochs=10, lr=1e-4, save_dir="checkpoints", device=device):
