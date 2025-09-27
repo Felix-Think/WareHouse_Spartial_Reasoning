@@ -141,23 +141,37 @@ class COCOADataset(Dataset):
 
 def collate_fn(batch):
     """
-    batch: list[dict], mỗi dict chứa 'image', 'boxes', 'labels', 'visible_masks', 'amodal_masks', ...
-    Trả về:
-        images: Tensor [B,C,H,W]
-        targets: list[dict] (mỗi phần tử ứng với 1 ảnh)
+    Collate function that properly handles the batch format from your dataloader
     """
-    images = [item['image'] for item in batch]
-    # stack images thành 1 tensor
-    images = torch.stack(images, dim=0)
+    images = []
     targets = []
+    
     for item in batch:
-        targets.append({
-            'boxes': item['boxes'],
-            'labels': item['labels'],
-            'visible_masks': item['visible_masks'],
-            'amodal_masks': item['amodal_masks']
-        })
+        # ✅ Your dataloader returns dict with these keys
+        if item['boxes'].shape[0] > 0:  # Only include items with annotations
+            images.append(item['image'])
+            targets.append({
+                'boxes': item['boxes'],
+                'labels': item['labels'],
+                'masks': item['visible_masks'],  # Standard PyTorch key
+                'visible_masks': item['visible_masks'],
+                'amodal_masks': item['amodal_masks']
+            })
+    
+    # Handle empty batch case
+    if len(images) == 0:
+        dummy_image = torch.zeros((3, 224, 224))
+        dummy_target = {
+            'boxes': torch.zeros((0, 4), dtype=torch.float32),
+            'labels': torch.zeros((0,), dtype=torch.int64),
+            'masks': torch.zeros((0, 224, 224), dtype=torch.uint8),
+            'visible_masks': torch.zeros((0, 224, 224), dtype=torch.uint8),
+            'amodal_masks': torch.zeros((0, 224, 224), dtype=torch.uint8)
+        }
+        return [dummy_image], [dummy_target]
+    
     return images, targets
+
 
 
 # Example
