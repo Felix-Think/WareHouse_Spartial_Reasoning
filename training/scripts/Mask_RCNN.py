@@ -12,6 +12,8 @@ import torch.nn.functional as F
 from torch import optim
 from tqdm import tqdm
 from torchvision.ops import roi_align
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", device)
 class ResNetBackbone(nn.Module):
     def __init__(self, pretrained=True):
         super().__init__()
@@ -546,7 +548,7 @@ def generate_proposals(rpn_cls, rpn_bbox, feature_shapes, image_size,
                        post_nms_topk=1000,
                        nms_thresh=0.7,
                        min_size=1.0,
-                       device="cpu"):
+                       device=device):
     """
     rpn_cls: list of tensors [B, H*W*num_anchors, 2]
     rpn_bbox: list of tensors [B, H*W*num_anchors, 4]
@@ -630,7 +632,7 @@ def encode_boxes_rpn(gt_boxes, anchors):
 
     return torch.stack([dx, dy, dw, dh], dim=1)
 def compute_loss_rpn(rpn_cls_logits, rpn_bbox_preds, anchors, gt_boxes,
-                     pos_thresh=0.7, neg_thresh=0.3, batch_size_per_image=256, device="cpu"):
+                     pos_thresh=0.7, neg_thresh=0.3, batch_size_per_image=256, device=device):
     """
     rpn_cls_logits: [N, 2] logit trước softmax
     rpn_bbox_preds: [N, 4] bbox deltas
@@ -753,7 +755,7 @@ def compute_total_loss(rpn_cls_logits, rpn_bbox_preds, anchors,
                        lambda_rpn_cls=1.0, lambda_rpn_reg=1.0,
                        lambda_det_cls=1.0, lambda_det_reg=1.0,
                        lambda_mask=1.0,
-                       device="cpu"):
+                       device=device):
     """
     Tính tổng loss cho Mask R-CNN với dual-mask head.
 
@@ -846,13 +848,12 @@ def compute_total_loss(rpn_cls_logits, rpn_bbox_preds, anchors,
         "mask_loss": mask_loss,
         "total_loss": total_loss
     }
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("Using device:", device)
+
 import torch
 import torch.nn as nn
 
 class MaskRCNN(nn.Module):
-    def __init__(self, num_classes=5, use_amodal=True, device="cpu"):
+    def __init__(self, num_classes=5, use_amodal=True, device=device):
         super().__init__()
         self.device = device
         self.num_classes = num_classes
@@ -933,7 +934,7 @@ class MaskRCNN(nn.Module):
             }
 
 
-def train_mask_rcnn(model, dataloader, num_epochs=10, lr=1e-4, save_dir="checkpoints", device="cuda"):
+def train_mask_rcnn(model, dataloader, num_epochs=10, lr=1e-4, save_dir="checkpoints", device=device):
     device = torch.device(device if torch.cuda.is_available() else "cpu")
     model.to(device)
     model.train()
@@ -1013,7 +1014,7 @@ if __name__ == "__main__":
         img_dir="Datasets/train/images",
         depth_dir="Datasets/train/depths"
     )
-    dataloader = DataLoader(dataset, batch_size=2, shuffle=True, collate_fn=collate_fn)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=True, collate_fn=collate_fn)
 
     # 2. Model
     model = MaskRCNN(num_classes=5, use_amodal=True)
