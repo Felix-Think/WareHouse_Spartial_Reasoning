@@ -17,14 +17,14 @@ LOCAL_DIR.mkdir(parents=True, exist_ok=True)
 
 # 👉 CHỈ TẢI 1 CHUNK / SPLIT
 ALLOW_PATTERNS = [
-    "train/images/chunk_005.tar.gz",
-    "train/depths/chunk_000.tar.gz",
-    "val/images/chunk_000.tar.gz",
-    "test/images/chunk_005.tar.gz",
+    # "train/images/chunk_005.tar.gz",
+    # "train/depths/chunk_000.tar.gz",
+    # "val/images/chunk_000.tar.gz",
+    # "test/images/chunk_005.tar.gz",
     # (nếu cần annotation / qa)
-    "train/annotations/*.json",
-    "val/annotations/*.json",
-    "test/annotations/*.json",
+    "train.json",
+    "val.json",
+    "test.json",
 ]
 
 # =========================
