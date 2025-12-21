@@ -41,6 +41,8 @@ for idx, sample in enumerate(samples):
         print(f"FORMAT: {sample['conversations'][0]}, {len(sample['rle'])} masks")
 
     img = cv2.imread(img_path)
+    if img is None:
+        continue
     overlay = img.copy()
 
     for i, rle in enumerate(sample["rle"]):

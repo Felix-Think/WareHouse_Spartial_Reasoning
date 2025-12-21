@@ -20,13 +20,26 @@ VALID_CLASSES = {
 ID2CLASS = {0: "pallet", 1: "transporter", 2: "shelf"}
 
 
-def extract_mask_classes(question):
-    """
-    Trả về list class theo thứ tự <mask> xuất hiện
-    Ví dụ: ['pallet', 'buffer', 'shelf']
-    """
-    pattern = r"(pallet|buffer|transporter|shelf)\s*<mask>"
-    return re.findall(pattern, question.lower())
+def infer_mask_classes_general(question):
+    q = question.lower()
+
+    tokens = re.findall(r"(pallets?|transporters?|shelves?|buffers?|<mask>)", q)
+
+    classes = []
+    current_class = None
+
+    for tok in tokens:
+        if tok in ["pallet", "pallets"]:
+            current_class = "pallet"
+        elif tok in ["transporter", "transporters"]:
+            current_class = "transporter"
+        elif tok in ["shelf", "shelves"]:
+            current_class = "shelf"
+        elif tok in ["buffer", "buffers"]:
+            current_class = "buffer"
+        elif tok == "<mask>":
+            classes.append(current_class)
+    return classes
 
 
 def map_rle_to_labels(sample, valid_classes):
@@ -38,7 +51,7 @@ def map_rle_to_labels(sample, valid_classes):
         list of (class_id, rle)
     """
     question = sample["conversations"][0]["value"]
-    class_seq = extract_mask_classes(question)
+    class_seq = infer_mask_classes_general(question)
 
     labeled_masks = []
 
