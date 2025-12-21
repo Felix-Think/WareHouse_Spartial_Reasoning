@@ -1,5 +1,4 @@
 import cv2
-import matplotlib.pyplot as plt
 from pycocotools import mask as MaskUtils
 import numpy as np
 import json
