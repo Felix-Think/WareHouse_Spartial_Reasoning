@@ -6,9 +6,9 @@ import os
 import re
 
 OUT_DIR = "image_visualized_label"
-JSON_PATH = "PhysicalAI_Warehouse/train.json"
+JSON_PATH = "PhysicalAI_Warehouse/train_new.json"
 IMAGE_DIR = "PhysicalAI_Warehouse/train/images"
-NUM_SAMPLES = 1000
+NUM_SAMPLES = 2000
 
 VALID_CLASSES = {
     "pallet": 0,
@@ -43,23 +43,31 @@ def infer_mask_classes_general(question):
 
 def map_rle_to_labels(sample, valid_classes):
     """
-    Input:
-        sample: 1 item trong train.json
-        valid_classes: dict {'pallet':0, ...}
+    Handle multi-question conversations.
     Output:
         list of (class_id, rle)
     """
-    question = sample["conversations"][0]["value"]
-    class_seq = infer_mask_classes_general(question)
-
     labeled_masks = []
 
-    for idx, cls_name in enumerate(class_seq):
-        if cls_name in valid_classes:
-            class_id = valid_classes[cls_name]
-            rle = sample["rle"][idx]
-            labeled_masks.append((class_id, rle))
-        # else: buffer → skip
+    mask_ptr = 0  # global mask index
+
+    for turn in sample["conversations"]:
+        if turn["from"] != "human":
+            continue
+
+        question = turn["value"]
+        class_seq = infer_mask_classes_general(question)
+
+        for cls_name in class_seq:
+            if mask_ptr >= len(sample["rle"]):
+                break
+
+            if cls_name in valid_classes:
+                class_id = valid_classes[cls_name]
+                rle = sample["rle"][mask_ptr]
+                labeled_masks.append((class_id, rle))
+
+            mask_ptr += 1  # luôn tăng global index
 
     return labeled_masks
 
@@ -100,16 +108,18 @@ for idx, sample in enumerate(samples):
     for i, (class_id, rle) in enumerate(labeled_mask):
         class_name = ID2CLASS[class_id]
         mask = decode_rle(rle)
-        color = colors[class_id % len(colors)]
 
-        overlay[mask == 1] = 0.6 * overlay[mask == 1] + 0.4 * np.array(color)
+        mask_color = colors[i % len(colors)]
+        text_color = colors[(i + 1) % len(colors)]
+
+        overlay[mask == 1] = 0.6 * overlay[mask == 1] + 0.4 * np.array(mask_color)
 
         ys, xs = np.where(mask > 0)
         if len(xs) > 0:
             cx, cy = int(xs.mean()), int(ys.mean())
 
             # vẽ centroid
-            cv2.circle(overlay, (cx, cy), 6, color, -1)
+            cv2.circle(overlay, (cx, cy), 6, text_color, -1)
 
             # vẽ label + class
             cv2.putText(
@@ -118,7 +128,7 @@ for idx, sample in enumerate(samples):
                 (cx + 5, cy - 5),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
-                color,
+                text_color,
                 2,
             )
 

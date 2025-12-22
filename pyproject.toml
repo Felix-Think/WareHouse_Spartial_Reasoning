@@ -6,9 +6,12 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "dotenv>=0.9.9",
+    "dvc>=3.64.2",
+    "dvc-s3>=3.2.2",
     "huggingface-hub>=1.2.3",
     "matplotlib>=3.10.8",
     "opencv-python>=4.12.0.88",
     "pycocotools>=2.0.11",
     "python-dotenv>=1.2.1",
+    "ultralytics>=8.3.240",
 ]

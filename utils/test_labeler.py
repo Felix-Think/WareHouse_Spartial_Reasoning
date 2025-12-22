@@ -1,4 +1,6 @@
 import re
+import json
+import os
 
 VALID_CLASSES = {"pallet", "transporter", "shelf", "buffer"}
 
@@ -26,6 +28,14 @@ def infer_mask_classes_general(question):
     return classes
 
 
-q = "among the pallets <mask> <mask> and the transporters <mask> <mask>"
+JSON_PATH = "PhysicalAI_Warehouse/train_new.json"
+with open(JSON_PATH, "r") as f:
+    data = json.load(f)
+TARGET_NAME = "065627.png"
+samples = data[:1000]
+for idx, sample in enumerate(samples):
+    if sample["image"] == TARGET_NAME:
 
-print(infer_mask_classes_general(q))
+        print(sample["conversations"])
+        q = sample["conversations"][0]["value"]
+        print(infer_mask_classes_general(q))

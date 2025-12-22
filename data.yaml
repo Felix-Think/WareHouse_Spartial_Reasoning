@@ -1,0 +1,8 @@
+path: datasets
+
+train: images/train
+val: images/val
+
+names:
+  0: pallet
+  1: transporter
