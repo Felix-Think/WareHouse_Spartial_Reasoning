@@ -1,4 +1,4 @@
-from ultralytics import YOLO
+from ultralytics import YOLO  # type: ignore
 
 # Load model segmentation
 model = YOLO("yolov12s-seg.pt")
