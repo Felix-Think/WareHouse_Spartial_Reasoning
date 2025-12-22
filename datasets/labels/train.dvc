@@ -1,0 +1,10 @@
+outs:
+- md5: 082cb0be2f70b24f6cc49bdcf40dc80b.dir
+  size: 385846862
+  nfiles: 2816
+  hash: md5
+  path: train
+
+meta:
+  version: v0.1
+  date: 22/10/2025
