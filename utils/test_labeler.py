@@ -1,6 +1,5 @@
 import re
 import json
-import os
 
 VALID_CLASSES = {"pallet", "transporter", "shelf", "buffer"}
 
