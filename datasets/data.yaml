@@ -1,0 +1,10 @@
+path: datasets
+train: train/images
+val: valid/images
+
+nc: 3
+
+names:
+  0: pallet
+  1: shelf
+  2: transporter

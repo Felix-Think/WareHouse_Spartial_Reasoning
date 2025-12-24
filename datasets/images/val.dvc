@@ -1,9 +1,0 @@
-outs:
-- md5: 14813f787991a4683c08577608aaf7a2.dir
-  size: 2147069612
-  nfiles: 704
-  hash: md5
-  path: val
-meta:
-  version: v0.1
-  date: 22/10/2025
