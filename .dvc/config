@@ -1,4 +1,4 @@
 [core]
-    remote = local
-['remote "local"']
-    url = ../../local_storage
+    remote = s3bucket
+['remote "s3bucket"']
+    url = s3://spartial-warehouse-bucket
