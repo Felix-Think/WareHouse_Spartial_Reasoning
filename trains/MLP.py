@@ -25,7 +25,7 @@ class MLP(nn.Module):
         self,
         input_dim: int,
         hidden_dims: Iterable[int] = (128, 64),
-        out_dim: int = 5,
+        out_dim: int = 1,
         dropout: float = 0.0,
         bias: bool = True,
     ):
@@ -72,10 +72,10 @@ class MLP(nn.Module):
         return self.net(x)
 
 def build_mlp(
-    input_dim: int = 9,
+    input_dim: int = 10,
     hidden_dims: Iterable[int] = (128, 64),
-    out_dim: int = 5,
-    dropout: float = 0.0,
+    out_dim: int = 1,
+    dropout: float = 0.1,
     bias: bool = True,
 ) -> MLP:
     """Helper to build an MLP with the given configuration."""
@@ -87,7 +87,7 @@ def build_mlp(
         bias=bias,
     )
 if __name__ == "__main__":
-    model = MLP(input_dim=9)
-    sample_input = torch.randn(4, 9)  # Batch size of 4, input dimension of 10
+    model = MLP(input_dim=10)
+    sample_input = torch.randn(4, 10)  # Batch size of 4, input dimension of 10
     output = model(sample_input)
-    print(output)  # Should be (4, 5)
+    print(output)  # Should be (4,2)
