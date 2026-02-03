@@ -1,0 +1,747 @@
+ <!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<title>YOLO Detector</title>
+
+<link rel="stylesheet" href="/static/styles.css" />
+
+</head>
+
+<body>
+
+<div class="page">
+
+<div class="card">
+
+<h1>YOLO Detector <span>Upload</span></h1>
+
+<p>Chọn một ảnh, gửi lên API FastAPI. Mô hình YOLO sẽ phát hiện và trả về bounding box.</p>
+
+<div class="upload">
+
+<label for="file">
+
+<div>
+
+<div>Chọn hoặc kéo thả ảnh RGB</div>
+
+<div class="muted">PNG, JPG được hỗ trợ</div>
+
+</div>
+
+<div class="badge">Browse</div>
+
+</label>
+
+<input id="file" type="file" accept="image/*" />
+
+</div>
+
+<div class="upload">
+
+<label for="depth">
+
+<div>
+
+<div>Chọn ảnh depth map</div>
+
+<div class="muted">PNG/JPG grayscale</div>
+
+</div>
+
+<div class="badge">Browse</div>
+
+</label>
+
+<input id="depth" type="file" accept="image/*" />
+
+</div>
+
+<button id="submit">Detect</button>
+
+<div class="badges">
+
+<div class="badge" id="status">Idle</div>
+
+<div class="badge" id="size"></div>
+
+<div class="badge" id="depth-size"></div>
+
+</div>
+
+<div class="badges">
+
+<div class="badge" id="selection">Chưa chọn vật thể</div>
+
+<div class="timing-block">
+
+<div class="badge timing-label">Detect</div>
+
+<div class="timing-value" id="detect-time">-- ms</div>
+
+<div class="badge timing-label">Distance</div>
+
+<div class="timing-value" id="distance-time">-- ms</div>
+
+</div>
+
+<div class="distance-block">
+
+<div class="badge badge-distance" id="distance">Khoảng cách: --</div>
+
+<div class="distance-meter">
+
+<div class="distance-fill" id="distance-fill"></div>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+
+<div class="card">
+
+<h1>Preview <span>Input</span></h1>
+
+<div class="preview" id="preview-box">
+
+<div class="muted">Chưa có ảnh</div>
+
+<img id="preview" alt="" style="display:none;" />
+
+<canvas id="overlay" class="overlay"></canvas>
+
+<canvas id="depth-canvas" style="display:none;"></canvas>
+
+</div>
+
+</div>
+
+
+<div class="card">
+
+<h1>Kết quả <span>YOLO</span></h1>
+
+<div class="result" id="result-box">
+
+<div class="muted" id="result-placeholder">Chưa có kết quả</div>
+
+<div class="spinner" id="loading" style="display:none;"></div>
+
+<img id="annotated" alt="Detection result" style="display:none;" />
+
+</div>
+
+<div class="list" id="boxes"></div>
+
+</div>
+
+</div>
+
+
+<script>
+
+const fileInput = document.getElementById('file');
+
+const preview = document.getElementById('preview');
+
+const overlay = document.getElementById('overlay');
+
+const overlayCtx = overlay.getContext('2d');
+
+const depthCanvas = document.getElementById('depth-canvas');
+
+const depthCtx = depthCanvas.getContext('2d');
+
+const annotated = document.getElementById('annotated');
+
+const statusBadge = document.getElementById('status');
+
+const sizeBadge = document.getElementById('size');
+
+const depthSizeBadge = document.getElementById('depth-size');
+
+const selectionBadge = document.getElementById('selection');
+
+const distanceBadge = document.getElementById('distance');
+
+const distanceFill = document.getElementById('distance-fill');
+
+const detectTimeEl = document.getElementById('detect-time');
+
+const distanceTimeEl = document.getElementById('distance-time');
+
+const loading = document.getElementById('loading');
+
+const resultPlaceholder = document.getElementById('result-placeholder');
+
+const boxesList = document.getElementById('boxes');
+
+const submitBtn = document.getElementById('submit');
+
+const depthInput = document.getElementById('depth');
+
+
+let detectedBoxes = [];
+
+let imageSize = null;
+
+let hoverIndex = null;
+
+let selected = [];
+
+let depthReady = false;
+
+let lastDistanceMeters = null;
+
+let selectedPair = null;
+
+
+function resetInteraction() {
+
+hoverIndex = null;
+
+selected = [];
+
+selectionBadge.textContent = 'Chưa chọn vật thể';
+
+distanceBadge.textContent = 'Khoảng cách: --';
+
+distanceFill.style.width = '0%';
+
+lastDistanceMeters = null;
+
+selectedPair = null;
+
+distanceTimeEl.textContent = '-- ms';
+
+drawOverlay();
+
+}
+
+
+function updateOverlaySize() {
+
+overlay.width = preview.clientWidth;
+
+overlay.height = preview.clientHeight;
+
+drawOverlay();
+
+}
+
+
+function drawOverlay() {
+
+overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+
+if (!imageSize || detectedBoxes.length === 0) return;
+
+
+const scaleX = overlay.width / imageSize.width;
+
+const scaleY = overlay.height / imageSize.height;
+
+
+overlayCtx.fillStyle = 'rgba(0,0,0,0.35)';
+
+overlayCtx.fillRect(0, 0, overlay.width, overlay.height);
+
+
+detectedBoxes.forEach((box, idx) => {
+
+const [x1, y1, x2, y2] = box.box;
+
+const bx = x1 * scaleX;
+
+const by = y1 * scaleY;
+
+const bw = (x2 - x1) * scaleX;
+
+const bh = (y2 - y1) * scaleY;
+
+
+const isHover = hoverIndex === idx;
+
+const isSelected = selected.some((item) => item.index === box.index);
+
+
+if (isHover) {
+
+overlayCtx.clearRect(bx - 8, by - 8, bw + 16, bh + 16);
+
+}
+
+
+overlayCtx.strokeStyle = isSelected ? '#22d3ee' : '#c084fc';
+
+overlayCtx.lineWidth = isHover ? 3 : 1.5;
+
+overlayCtx.strokeRect(bx, by, bw, bh);
+
+});
+
+
+const pair = selectedPair ?? (selected.length === 2 ? selected : null);
+
+if (pair) {
+
+const boxA = detectedBoxes.find((b) => b.index === pair[0].index);
+
+const boxB = detectedBoxes.find((b) => b.index === pair[1].index);
+
+if (boxA && boxB) {
+
+const [ax1, ay1, ax2, ay2] = boxA.box;
+
+const [bx1, by1, bx2, by2] = boxB.box;
+
+const cx1 = ((ax1 + ax2) / 2) * scaleX;
+
+const cy1 = ((ay1 + ay2) / 2) * scaleY;
+
+const cx2 = ((bx1 + bx2) / 2) * scaleX;
+
+const cy2 = ((by1 + by2) / 2) * scaleY;
+
+
+overlayCtx.strokeStyle = '#22d3ee';
+
+overlayCtx.lineWidth = 2.5;
+
+overlayCtx.beginPath();
+
+overlayCtx.moveTo(cx1, cy1);
+
+overlayCtx.lineTo(cx2, cy2);
+
+overlayCtx.stroke();
+
+
+if (lastDistanceMeters !== null) {
+
+const mx = (cx1 + cx2) / 2;
+
+const my = (cy1 + cy2) / 2;
+
+const label = `${lastDistanceMeters.toFixed(3)} m`;
+
+overlayCtx.font = '600 14px "Segoe UI", "Helvetica Neue", sans-serif';
+
+const padX = 8;
+
+const padY = 5;
+
+const textWidth = overlayCtx.measureText(label).width;
+
+const boxW = textWidth + padX * 2;
+
+const boxH = 22;
+
+const rx = mx - boxW / 2;
+
+const ry = my - boxH - 8;
+
+overlayCtx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+
+overlayCtx.strokeStyle = 'rgba(34, 211, 238, 0.65)';
+
+overlayCtx.lineWidth = 1;
+
+overlayCtx.beginPath();
+
+overlayCtx.roundRect(rx, ry, boxW, boxH, 999);
+
+overlayCtx.fill();
+
+overlayCtx.stroke();
+
+overlayCtx.fillStyle = '#e2e8f0';
+
+overlayCtx.fillText(label, rx + padX, ry + boxH - 7);
+
+}
+
+}
+
+}
+
+}
+
+
+function imageCoordsFromEvent(event) {
+
+const rect = overlay.getBoundingClientRect();
+
+const x = (event.clientX - rect.left) * (imageSize.width / rect.width);
+
+const y = (event.clientY - rect.top) * (imageSize.height / rect.height);
+
+return { x, y };
+
+}
+
+
+function getDepthAt(x, y) {
+
+if (!depthReady) return null;
+
+const depthW = depthCanvas.width;
+
+const depthH = depthCanvas.height;
+
+const dx = Math.min(depthW - 1, Math.max(0, Math.round(x * (depthW / imageSize.width))));
+
+const dy = Math.min(depthH - 1, Math.max(0, Math.round(y * (depthH / imageSize.height))));
+
+const pixel = depthCtx.getImageData(dx, dy, 1, 1).data;
+
+return pixel[0];
+
+}
+
+
+async function requestDistance(index1, index2) {
+
+const file = fileInput.files?.[0];
+
+const depthFile = depthInput.files?.[0];
+
+if (!file || !depthFile) {
+
+alert('Vui lòng chọn ảnh RGB và ảnh depth.');
+
+return;
+
+}
+
+statusBadge.textContent = 'Computing...';
+
+const formData = new FormData();
+
+formData.append('question', `khoảng cách giữa vật thể ${index1} và vật thể ${index2} là bao nhiêu`);
+
+formData.append('image', file);
+
+formData.append('depth', depthFile);
+
+
+const start = performance.now();
+
+try {
+
+const res = await fetch('/api/distance', { method: 'POST', body: formData });
+
+if (!res.ok) {
+
+const msg = await res.json().catch(() => ({}));
+
+throw new Error(msg.detail || 'Distance failed');
+
+}
+
+const data = await res.json();
+
+const distanceMeters = data.distance / 100.0;
+
+distanceBadge.textContent = `Khoảng cách: ${distanceMeters.toFixed(3)} m`;
+
+const distanceMaxMeters = 10;
+
+const ratio = Math.min(Math.max(distanceMeters / distanceMaxMeters, 0), 1);
+
+distanceFill.style.width = `${(ratio * 100).toFixed(1)}%`;
+
+lastDistanceMeters = distanceMeters;
+
+drawOverlay();
+
+statusBadge.textContent = 'Done';
+
+} catch (err) {
+
+statusBadge.textContent = 'Error';
+
+alert(err.message || 'Có lỗi xảy ra');
+
+} finally {
+
+const elapsed = performance.now() - start;
+
+distanceTimeEl.textContent = `${elapsed.toFixed(0)} ms`;
+
+}
+
+}
+
+
+fileInput.addEventListener('change', () => {
+
+const file = fileInput.files?.[0];
+
+if (!file) return;
+
+preview.src = URL.createObjectURL(file);
+
+preview.style.display = 'block';
+
+statusBadge.textContent = 'Ready';
+
+sizeBadge.textContent = `${(file.size / 1024).toFixed(1)} KB`;
+
+document.getElementById('preview-box').querySelector('.muted')?.remove();
+
+resetInteraction();
+
+});
+
+
+depthInput.addEventListener('change', () => {
+
+const file = depthInput.files?.[0];
+
+if (!file) return;
+
+const img = new Image();
+
+img.onload = () => {
+
+depthCanvas.width = img.naturalWidth;
+
+depthCanvas.height = img.naturalHeight;
+
+depthCtx.drawImage(img, 0, 0);
+
+depthReady = true;
+
+};
+
+img.src = URL.createObjectURL(file);
+
+depthSizeBadge.textContent = `${(file.size / 1024).toFixed(1)} KB depth`;
+
+resetInteraction();
+
+});
+
+
+async function detect() {
+
+const file = fileInput.files?.[0];
+
+const depthFile = depthInput.files?.[0];
+
+if (!file) {
+
+alert('Vui lòng chọn ảnh RGB trước.');
+
+return;
+
+}
+
+if (!depthFile) {
+
+alert('Vui lòng chọn ảnh depth.');
+
+return;
+
+}
+
+statusBadge.textContent = 'Uploading...';
+
+loading.style.display = 'grid';
+
+resultPlaceholder.style.display = 'none';
+
+annotated.style.display = 'none';
+
+boxesList.innerHTML = '';
+
+const start = performance.now();
+
+
+const formData = new FormData();
+
+formData.append('file', file);
+
+
+try {
+
+const res = await fetch('/api/detect', { method: 'POST', body: formData });
+
+if (!res.ok) {
+
+const msg = await res.json().catch(() => ({}));
+
+throw new Error(msg.detail || 'Detect failed');
+
+}
+
+const data = await res.json();
+
+detectedBoxes = data.boxes || [];
+
+imageSize = data.image_size;
+
+annotated.src = data.annotated_image;
+
+annotated.style.display = 'block';
+
+statusBadge.textContent = 'Done';
+
+boxesList.innerHTML = '';
+
+detectedBoxes.forEach((b, idx) => {
+
+const item = document.createElement('div');
+
+item.className = 'item';
+
+const name = b.class_name ?? 'unknown';
+
+const conf = b.confidence !== null && b.confidence !== undefined ? `${(b.confidence * 100).toFixed(1)}%` : '--';
+
+const indexLabel = b.index ?? idx + 1;
+
+item.innerHTML = `<span>${indexLabel}. ${name}</span><div class="muted">${conf}</div>`;
+
+boxesList.appendChild(item);
+
+});
+
+resetInteraction();
+
+updateOverlaySize();
+
+} catch (err) {
+
+statusBadge.textContent = 'Error';
+
+alert(err.message || 'Có lỗi xảy ra');
+
+} finally {
+
+const elapsed = performance.now() - start;
+
+detectTimeEl.textContent = `${elapsed.toFixed(0)} ms`;
+
+loading.style.display = 'none';
+
+}
+
+}
+
+
+submitBtn.addEventListener('click', detect);
+
+
+preview.addEventListener('load', updateOverlaySize);
+
+window.addEventListener('resize', updateOverlaySize);
+
+
+overlay.addEventListener('mousemove', (event) => {
+
+if (!imageSize || detectedBoxes.length === 0) return;
+
+const pos = imageCoordsFromEvent(event);
+
+const hitIndex = detectedBoxes.findIndex((box) => {
+
+const [x1, y1, x2, y2] = box.box;
+
+return pos.x >= x1 && pos.x <= x2 && pos.y >= y1 && pos.y <= y2;
+
+});
+
+hoverIndex = hitIndex >= 0 ? hitIndex : null;
+
+drawOverlay();
+
+});
+
+
+overlay.addEventListener('mouseleave', () => {
+
+hoverIndex = null;
+
+drawOverlay();
+
+});
+
+
+overlay.addEventListener('click', () => {
+
+if (hoverIndex === null) return;
+
+if (selectedPair && selected.length === 2) {
+
+selected = [];
+
+selectedPair = null;
+
+lastDistanceMeters = null;
+
+selectionBadge.textContent = 'Chưa chọn vật thể';
+
+distanceBadge.textContent = 'Khoảng cách: --';
+
+distanceFill.style.width = '0%';
+
+}
+
+const box = detectedBoxes[hoverIndex];
+
+const [x1, y1, x2, y2] = box.box;
+
+const cx = (x1 + x2) / 2;
+
+const cy = (y1 + y2) / 2;
+
+const depth = getDepthAt(cx, cy);
+
+const payload = { index: box.index, cx, cy, depth };
+
+
+if (selected.some((item) => item.index === payload.index)) {
+
+return;
+
+}
+
+selected.push(payload);
+
+selectionBadge.textContent = selected.map((item) => `#${item.index}`).join(', ');
+
+drawOverlay();
+
+
+if (selected.length === 2) {
+
+const [first, second] = selected;
+
+selectedPair = [...selected];
+
+requestDistance(first.index, second.index);
+
+drawOverlay();
+
+}
+
+});
+
+</script>
+
+</body>
+
+</html> 
